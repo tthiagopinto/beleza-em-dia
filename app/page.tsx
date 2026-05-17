@@ -122,7 +122,7 @@ export default function Home() {
       <section className="mb-6">
         <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Vence em breve</h2>
         {vencendo.length === 0 && (
-          <p className="text-sm text-gray-400">Nenhum vencimento nos próximos 7 dias</p>
+          <p className="text-sm text-gray-400">Nenhum vencimento nos próximos 15 dias</p>
         )}
         <div className="flex flex-col gap-3">
           {vencendo.map((p) => (

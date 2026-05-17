@@ -12,12 +12,32 @@ type Cliente = {
   observacoes: string
 }
 
+type ItemHistorico = {
+  quantidade: number
+  preco_unitario: number
+  produtos: { nome: string }
+}
+
+type HistoricoVenda = {
+  id: string
+  criado_em: string
+  total: number
+  forma_pagamento: string
+  venda_itens: ItemHistorico[]
+}
+
 const clienteVazio = {
   nome: '',
   whatsapp: '',
   endereco: '',
   cidade: '',
   observacoes: '',
+}
+
+const labelForma: Record<string, string> = {
+  pix_parcelado: 'Pix parcelado',
+  pix_avista: 'Pix à vista',
+  dinheiro: 'Dinheiro',
 }
 
 export default function Clientes() {
@@ -28,6 +48,9 @@ export default function Clientes() {
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const [clienteHistorico, setClienteHistorico] = useState<Cliente | null>(null)
+  const [historico, setHistorico] = useState<HistoricoVenda[]>([])
+  const [loadingHistorico, setLoadingHistorico] = useState(false)
 
   useEffect(() => {
     buscarClientes()
@@ -40,6 +63,18 @@ export default function Clientes() {
       .order('nome')
     setClientes(data || [])
     setLoading(false)
+  }
+
+  async function verHistorico(c: Cliente) {
+    setClienteHistorico(c)
+    setLoadingHistorico(true)
+    const { data } = await supabase
+      .from('vendas')
+      .select('id, criado_em, total, forma_pagamento, venda_itens(quantidade, preco_unitario, produtos(nome))')
+      .eq('cliente_id', c.id)
+      .order('criado_em', { ascending: false })
+    setHistorico((data as unknown as HistoricoVenda[]) || [])
+    setLoadingHistorico(false)
   }
 
   async function salvar() {
@@ -80,6 +115,52 @@ export default function Clientes() {
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
       <p className="text-gray-400">Carregando...</p>
+    </div>
+  )
+
+  if (clienteHistorico) return (
+    <div className="p-4">
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={() => setClienteHistorico(null)} className="text-gray-400 text-xl">←</button>
+        <div>
+          <h1 className="text-lg font-medium text-gray-800">{clienteHistorico.nome}</h1>
+          <p className="text-xs text-gray-400">Histórico de compras</p>
+        </div>
+      </div>
+
+      {loadingHistorico && (
+        <p className="text-sm text-gray-400 text-center py-8">Carregando...</p>
+      )}
+
+      {!loadingHistorico && historico.length === 0 && (
+        <p className="text-sm text-gray-400 text-center py-8">Nenhuma compra registrada</p>
+      )}
+
+      <div className="flex flex-col gap-4">
+        {historico.map(v => (
+          <div key={v.id} className="bg-white rounded-xl border border-gray-100 p-4">
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <p className="text-sm font-medium text-gray-800">
+                  {new Date(v.criado_em).toLocaleDateString('pt-BR')}
+                </p>
+                <p className="text-xs text-gray-400">{labelForma[v.forma_pagamento] || v.forma_pagamento}</p>
+              </div>
+              <p className="font-medium text-gray-800">R$ {v.total.toFixed(2).replace('.', ',')}</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {v.venda_itens.map((item, i) => (
+                <div key={i} className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">{item.produtos.nome}</span>
+                  <span className="text-gray-400 text-xs">
+                    {item.quantidade} un. · R$ {item.preco_unitario.toFixed(2).replace('.', ',')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 
@@ -188,12 +269,20 @@ export default function Clientes() {
               <p className="font-medium text-gray-800 truncate">{c.nome}</p>
               <p className="text-sm text-gray-400 truncate">{c.whatsapp || 'Sem WhatsApp'}</p>
             </div>
-            <button
-              onClick={() => editar(c)}
-              className="text-gray-300 text-lg px-2"
-            >
-              ✎
-            </button>
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={() => editar(c)}
+                className="text-xs text-pink-800 font-medium px-3 py-1 border border-pink-200 rounded-lg"
+              >
+                Editar
+              </button>
+              <button
+                onClick={() => verHistorico(c)}
+                className="text-xs text-gray-500 font-medium px-3 py-1 border border-gray-200 rounded-lg"
+              >
+                Histórico
+              </button>
+            </div>
           </div>
         ))}
         {filtrados.length === 0 && (

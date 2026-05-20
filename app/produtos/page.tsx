@@ -117,10 +117,12 @@ export default function Produtos() {
     setMostraForm(false)
   }
 
-  const filtrados = produtos.filter(p =>
-    p.nome.toLowerCase().includes(busca.toLowerCase()) ||
-    (p.categoria || '').toLowerCase().includes(busca.toLowerCase())
-  )
+  const filtrados = produtos
+    .filter(p =>
+      p.nome.toLowerCase().includes(busca.toLowerCase()) ||
+      (p.categoria || '').toLowerCase().includes(busca.toLowerCase())
+    )
+    .sort((a, b) => b.estoque - a.estoque)
 
   const rankingOrdenado = [...ranking].sort((a, b) =>
     rankingPor === 'quantidade'
@@ -239,6 +241,12 @@ export default function Produtos() {
                       <p className="text-xs text-gray-400">Custo médio</p>
                       <p className="font-medium text-sm text-gray-700">
                         R$ {(p.custo_medio || 0).toFixed(2).replace('.', ',')}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-400">Financeiro</p>
+                      <p className="font-medium text-sm text-gray-700">
+                        R$ {((p.estoque * p.custo_medio) || 0).toFixed(2).replace('.', ',')}
                       </p>
                     </div>
                     <button onClick={() => editar(p)} className="text-gray-300 text-lg">✎</button>

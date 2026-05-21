@@ -45,6 +45,7 @@ type Parcela = {
   id: string
   valor: number
   status: string
+  vencimento?: string
 }
 
 export default function Vendas() {
@@ -334,6 +335,70 @@ export default function Vendas() {
     buscarDados()
   }
 
+  // Parcelas
+  const [modalParcelas, setModalParcelas] = useState<{ venda: Venda; parcelas: Parcela[] } | null>(null)
+  const [carregandoParcelas, setCarregandoParcelas] = useState(false)
+
+  async function abrirParcelas(venda: Venda) {
+    setCarregandoParcelas(true)
+    const { data } = await supabase
+      .from('parcelas_receber')
+      .select('id, valor, status, vencimento')
+      .eq('venda_id', venda.id)
+      .order('numero')
+
+    setModalParcelas({ venda, parcelas: (data as Parcela[]) || [] })
+    setCarregandoParcelas(false)
+  }
+
+  async function confirmarRecebimento(parcela: Parcela) {
+    if (!confirm('Confirmar recebimento desta parcela?')) return
+    setProcessando(true)
+    const hoje = new Date().toISOString().split('T')[0]
+    await supabase
+      .from('parcelas_receber')
+      .update({ status: 'recebido', recebido_em: hoje })
+      .eq('id', parcela.id)
+    setProcessando(false)
+    if (modalParcelas) abrirParcelas(modalParcelas.venda)
+    buscarDados()
+  }
+
+  async function recebimentoParcial(parcela: Parcela) {
+    const texto = prompt('Valor recebido (use ponto ou vírgula):', parcela.valor.toString())
+    if (!texto) return
+    const recebido = parseFloat(texto.replace(',', '.'))
+    if (isNaN(recebido) || recebido <= 0) { alert('Valor inválido'); return }
+
+    setProcessando(true)
+    const restante = Math.max(0, parcela.valor - recebido)
+
+    // Atualiza a parcela atual com o valor recebido e marca como recebido
+    const hoje = new Date().toISOString().split('T')[0]
+    await supabase
+      .from('parcelas_receber')
+      .update({ valor: recebido, status: 'recebido', recebido_em: hoje })
+      .eq('id', parcela.id)
+
+    // Se houver saldo restante, cria uma nova parcela pendente com o restante
+    if (restante > 0) {
+      const vencimento = parcela.vencimento || hoje
+      if (modalParcelas && modalParcelas.venda && modalParcelas.venda.id) {
+        await supabase.from('parcelas_receber').insert({
+          venda_id: modalParcelas.venda.id,
+          numero: 999,
+          valor: restante,
+          vencimento,
+          status: 'pendente',
+        })
+      }
+    }
+
+    setProcessando(false)
+    if (modalParcelas) abrirParcelas(modalParcelas.venda)
+    buscarDados()
+  }
+
   const labelForma: Record<string, string> = {
     pix_parcelado: 'Pix parcelado',
     pix_avista: 'Pix à vista',
@@ -577,6 +642,12 @@ export default function Vendas() {
                   {vendaExpandida === v.id ? 'Fechar itens' : 'Ver itens'}
                 </button>
                 <button
+                  onClick={() => abrirParcelas(v)}
+                  className="text-xs text-pink-800 font-medium"
+                >
+                  Ver parcelas
+                </button>
+                <button
                   onClick={() => excluirVenda(v.id)}
                   className="text-xs text-red-400"
                 >
@@ -598,7 +669,7 @@ export default function Vendas() {
                               {item.quantidade} un. · R$ {item.preco_unitario.toFixed(2).replace('.', ',')}
                             </p>
                           </div>
-                          <div className="flex gap-1.5 flex-shrink-0">
+                          <div className="flex gap-1.5 shrink-0">
                             <button
                               onClick={() => { setModalTroca({ venda: v, item }); setTrocaProdutoId(''); setTrocaPreco('') }}
                               className="text-xs text-blue-700 border border-blue-200 px-2 py-1 rounded-lg"
@@ -623,6 +694,58 @@ export default function Vendas() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal Parcelas */}
+      {modalParcelas && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-2xl p-5 flex flex-col gap-4">
+            <h2 className="font-medium text-gray-800">Parcelas - {modalParcelas.venda.clientes?.nome}</h2>
+
+            {carregandoParcelas ? (
+              <p className="text-xs text-gray-400 text-center py-2">Carregando...</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {modalParcelas.parcelas.map(parc => (
+                  <div key={parc.id} className="flex items-center justify-between gap-2 bg-gray-50 rounded-xl p-3">
+                    <div>
+                      <p className="text-sm text-gray-800">R$ {parc.valor.toFixed(2).replace('.', ',')}</p>
+                      <p className="text-xs text-gray-400">{parc.vencimento} · {parc.status}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => confirmarRecebimento(parc)}
+                        disabled={processando || parc.status === 'recebido'}
+                        className="text-xs bg-green-600 text-white px-3 py-1 rounded-lg disabled:opacity-50"
+                      >
+                        Confirmar recebimento
+                      </button>
+                      <button
+                        onClick={() => recebimentoParcial(parc)}
+                        disabled={processando || parc.status === 'recebido'}
+                        className="text-xs bg-yellow-400 text-black px-3 py-1 rounded-lg disabled:opacity-50"
+                      >
+                        Recebimento parcial
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {modalParcelas.parcelas.length === 0 && (
+                  <p className="text-xs text-gray-400 text-center py-2">Nenhuma parcela encontrada</p>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setModalParcelas(null)}
+                className="flex-1 border border-gray-200 text-gray-500 py-3 rounded-xl text-sm"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
